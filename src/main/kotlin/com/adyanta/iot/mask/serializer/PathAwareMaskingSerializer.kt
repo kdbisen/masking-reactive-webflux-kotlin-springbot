@@ -1,6 +1,8 @@
 package com.adyanta.iot.mask.serializer
 
 import com.adyanta.iot.mask.model.KYCAppendix
+
+
 import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.SerializerProvider
@@ -11,15 +13,19 @@ import com.fasterxml.jackson.databind.ObjectMapper
 class PathAwareMaskingSerializer(
     private val fieldsToMask: List<String>,
     private val currentPath: String = ""
-) : StdSerializer<KYCAppendix>(KYCAppendix::class.java) {
+) : StdSerializer<Any>(Any::class.java) {
 
-    override fun serialize(value: KYCAppendix?, gen: JsonGenerator, serializers: SerializerProvider) {
+    override fun serialize(value: Any?, gen: JsonGenerator, serializers: SerializerProvider) {
+        if (value is JsonNode) {
+            serializers.defaultSerializeValue(value, gen)
+            return
+        }
         if (value == null) {
             gen.writeNull()
             return
         }
 
-        val mapper = ObjectMapper() // optionally inject
+        val mapper = ObjectMapper().registerModule(com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
         val jsonNode = mapper.valueToTree<JsonNode>(value)
         val maskedNode = applyMasking(jsonNode, currentPath)
         gen.writeTree(maskedNode)
@@ -31,7 +37,7 @@ class PathAwareMaskingSerializer(
         val mapper = ObjectMapper()
 
         if (node.isArray) {
-            val updatedArray = node.map { element ->
+            val updatedArray = node.mapIndexed { index, element ->
                 if (element.isObject || element.isArray) {
                     applyMasking(element, path)
                 } else element
@@ -46,9 +52,15 @@ class PathAwareMaskingSerializer(
             val field = fields.next()
             val child = node.get(field)
             val fullPath = if (path.isEmpty()) field else "$path.$field"
-            println("Writing $fullPath")
+
             if (shouldMask(fullPath)) {
-                copy.put(field, "****")
+                if (child.isTextual || child.isNumber || child.isBoolean) {
+                    copy.put(field, "****")
+                } else if (child.isObject || child.isArray) {
+                    copy.set<JsonNode>(field, applyMasking(child, fullPath))
+                } else {
+                    copy.set<JsonNode>(field, child)
+                }
             } else if (child.isObject || child.isArray) {
                 copy.set<JsonNode>(field, applyMasking(child, fullPath))
             } else {
@@ -61,7 +73,9 @@ class PathAwareMaskingSerializer(
 
     private fun shouldMask(fullPath: String): Boolean {
         return fieldsToMask.any { maskPath ->
-            maskPath == fullPath || (maskPath.startsWith("*.") && fullPath.endsWith(maskPath.removePrefix("*.").trim()))
+            maskPath == fullPath ||
+                    (maskPath.startsWith("*.") && fullPath.endsWith(maskPath.removePrefix("*.").trim()))
         }
     }
+
 }
