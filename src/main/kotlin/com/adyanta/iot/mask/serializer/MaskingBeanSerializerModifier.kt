@@ -13,7 +13,7 @@ class MaskingBeanSerializerModifier(private val fieldsToMask: Set<String>) : Bea
         for (writer in beanProperties) {
             val fullPath = "${beanDesc.beanClass.simpleName.lowercase()}.${writer.name}"
             if (fieldsToMask.contains(writer.name) || fieldsToMask.contains(fullPath)) {
-                writer.assignSerializer(MaskingSerializer(writer.name))
+                writer.assignSerializer(MaskingSerializer())
             }
         }
         return beanProperties
