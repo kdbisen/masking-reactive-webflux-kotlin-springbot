@@ -3,6 +3,9 @@ package com.adyanta.iot.mask.controller
 
 import com.adyanta.iot.mask.annotation.Mask
 import com.adyanta.iot.mask.model.User
+import com.adyanta.iot.mask.serializer.MaskingBeanSerializerModifier
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.module.SimpleModule
 import org.springframework.web.bind.annotation.*
 import reactor.core.publisher.Mono
 
@@ -58,4 +61,16 @@ class UserController {
             )
         )
     }
+
+    fun maskResponse(data: Any, fieldsToMask: List<String>, objectMapper: ObjectMapper): Mono<Any> {
+        val maskedMapper = objectMapper.copy().apply {
+            registerModule(SimpleModule().apply {
+                setSerializerModifier(MaskingBeanSerializerModifier(fieldsToMask.toSet()))
+            })
+        }
+        val jsonBytes = maskedMapper.writeValueAsBytes(data)
+        val result = objectMapper.readValue(jsonBytes, Any::class.java)
+        return Mono.just(result)
+    }
+
 }
